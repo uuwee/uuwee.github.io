@@ -403,7 +403,7 @@
     });
     const exactHelp = document.createElement('p');
     exactHelp.className = 'help';
-    exactHelp.textContent = '有効にしたスタッフについて、表示月の出勤回数を指定した回数に固定します。上限はそのスタッフの出勤可能回数です。';
+    exactHelp.textContent = '有効にしたスタッフについて、表示月の出勤回数の下限と上限を指定します。設定できる最大値は、そのスタッフの出勤可能回数です。';
     exactDetails.append(exactHelp);
     const exactStaff = document.createElement('div');
     exactStaff.className = 'exact-count-options';
@@ -411,9 +411,12 @@
     for (const name of names) {
       const possible = days.reduce((total, [, slots]) => total + slots.filter((slot) => slot.names.includes(name)).length, 0);
       const enabled = Object.prototype.hasOwnProperty.call(exact.counts ?? {}, name);
-      const savedCount = enabled && Number.isInteger(exact.counts[name]) ? exact.counts[name] : 0;
-      const value = Math.max(0, Math.min(possible, savedCount));
-      if (enabled && savedCount !== value) exact.counts[name] = value;
+      const savedCount = exact.counts?.[name];
+      const savedLimits = Number.isInteger(savedCount) ? { min: savedCount, max: savedCount } : savedCount;
+      const minimum = Number.isInteger(savedLimits?.min) ? Math.max(0, Math.min(possible, savedLimits.min)) : 0;
+      const maximum = Number.isInteger(savedLimits?.max) ? Math.max(minimum, Math.min(possible, savedLimits.max)) : possible;
+      const limits = { min: minimum, max: maximum };
+      if (enabled && (Number.isInteger(savedCount) || savedLimits?.min !== minimum || savedLimits?.max !== maximum)) exact.counts[name] = limits;
       const row = document.createElement('div');
       row.className = 'exact-count-row';
       const toggleLabel = document.createElement('label');
@@ -424,25 +427,33 @@
       toggle.checked = enabled;
       toggle.disabled = !hasMonth();
       toggleLabel.append(toggle, document.createTextNode(` ${name}`));
-      const rangeLabel = document.createElement('label');
-      rangeLabel.className = 'exact-count-control';
+      const rangeControl = document.createElement('div');
+      rangeControl.className = 'exact-count-control';
       const description = document.createElement('span');
       description.textContent = `出勤回数（出勤可能 ${possible}回）`;
-      const range = document.createElement('input');
-      range.type = 'range';
-      range.min = '0';
-      range.max = String(possible);
-      range.step = '1';
-      range.value = String(value);
-      range.disabled = !enabled || !hasMonth();
-      range.dataset.exactCountStaff = name;
-      range.setAttribute('aria-label', `${name}が出勤する回数`);
-      range.setAttribute('aria-valuetext', `${value}回`);
       const output = document.createElement('output');
       output.dataset.exactCountOutput = name;
-      output.textContent = `${value}回`;
-      rangeLabel.append(description, range, output);
-      row.append(toggleLabel, rangeLabel);
+      const rangeContainer = document.createElement('div');
+      rangeContainer.className = 'dual-range';
+      const track = document.createElement('span');
+      track.className = 'dual-range-track';
+      rangeContainer.append(track);
+      for (const [bound, text] of [['min', '下限'], ['max', '上限']]) {
+        const range = document.createElement('input');
+        range.type = 'range';
+        range.min = '0';
+        range.max = String(possible);
+        range.step = '1';
+        range.value = String(limits[bound]);
+        range.disabled = !enabled || !hasMonth();
+        range.dataset.exactCountStaff = name;
+        range.dataset.exactCountBound = bound;
+        range.setAttribute('aria-label', `${name}が出勤する回数の${text}`);
+        rangeContainer.append(range);
+      }
+      rangeControl.append(description, output, rangeContainer);
+      syncExactCountRange(rangeControl, limits);
+      row.append(toggleLabel, rangeControl);
       exactStaff.append(row);
     }
     if (!names.length) exactStaff.textContent = '勤務希望を読み込むと、スタッフごとの回数を設定できます。';
@@ -607,6 +618,20 @@
       const value = limits[range.dataset.bound];
       range.value = value;
       range.setAttribute('aria-valuetext', `${value}人`);
+    }
+  }
+  function syncExactCountRange(controls, limits) {
+    const ranges = [...controls.querySelectorAll('input[type="range"]')];
+    const maximum = Number(ranges[0]?.max ?? 0);
+    const position = (value) => `${maximum ? value / maximum * 100 : 0}%`;
+    controls.style.setProperty('--range-min', position(limits.min));
+    controls.style.setProperty('--range-max', position(limits.max));
+    controls.classList.toggle('min-on-top', limits.max === maximum);
+    controls.querySelector('[data-exact-count-output]').textContent = `${limits.min}〜${limits.max}回`;
+    for (const range of ranges) {
+      const value = limits[range.dataset.exactCountBound];
+      range.value = value;
+      range.setAttribute('aria-valuetext', `${value}回`);
     }
   }
   function makeSlotControls(date, time, staffCount) {
@@ -1449,9 +1474,10 @@
       const name = input.dataset.exactCountToggle;
       const conditions = monthConditions[monthKey()] ??= {};
       const exact = conditions.exactWorkCounts ??= { counts: {} };
-      const range = get('group-conditions').querySelector(`input[data-exact-count-staff="${CSS.escape(name)}"]`);
-      range.disabled = !input.checked;
-      if (input.checked) exact.counts[name] = Number(range.value);
+      const control = input.closest('.exact-count-row').querySelector('.exact-count-control');
+      const ranges = [...control.querySelectorAll('input[data-exact-count-staff]')];
+      ranges.forEach((range) => { range.disabled = !input.checked; });
+      if (input.checked) exact.counts[name] = Object.fromEntries(ranges.map((range) => [range.dataset.exactCountBound, Number(range.value)]));
       else delete exact.counts[name];
       save();
       queueSolve(false);
@@ -1474,14 +1500,20 @@
   get('group-conditions').addEventListener('input', (event) => {
     const input = event.target;
     const name = input.dataset.exactCountStaff;
-    if (name === undefined) return;
-    const value = Number(input.value);
-    input.setAttribute('aria-valuetext', `${value}回`);
-    const output = get('group-conditions').querySelector(`output[data-exact-count-output="${CSS.escape(name)}"]`);
-    output.textContent = `${value}回`;
+    const bound = input.dataset.exactCountBound;
+    if (name === undefined || bound === undefined) return;
+    const control = input.closest('.exact-count-control');
+    const ranges = [...control.querySelectorAll('input[data-exact-count-staff]')];
+    const limits = Object.fromEntries(ranges.map((range) => [range.dataset.exactCountBound, Number(range.value)]));
+    limits[bound] = Number(input.value);
+    if (limits.min > limits.max) {
+      if (bound === 'min') limits.max = limits.min;
+      else limits.min = limits.max;
+    }
+    syncExactCountRange(control, limits);
     const conditions = monthConditions[monthKey()] ??= {};
     const exact = conditions.exactWorkCounts ??= { counts: {} };
-    exact.counts[name] = value;
+    exact.counts[name] = limits;
     save();
     queueSolve(false);
   });
@@ -1699,8 +1731,10 @@
       }
       if (groups.exactWorkCounts !== undefined) {
         require(record(groups.exactWorkCounts) && record(groups.exactWorkCounts.counts));
-        for (const [name, count] of Object.entries(groups.exactWorkCounts.counts)) {
-          require(typeof name === 'string' && Number.isInteger(count) && count >= 0);
+        for (const [name, limits] of Object.entries(groups.exactWorkCounts.counts)) {
+          const validLegacyCount = Number.isInteger(limits) && limits >= 0;
+          const validRange = record(limits) && Number.isInteger(limits.min) && Number.isInteger(limits.max) && limits.min >= 0 && limits.max >= limits.min;
+          require(typeof name === 'string' && (validLegacyCount || validRange));
         }
       }
       if (groups.continuousDailyShift !== undefined) {

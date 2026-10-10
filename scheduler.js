@@ -142,23 +142,25 @@ window.ShiftScheduler = {
     }
     const exactCounts = groups.exactWorkCounts?.counts ?? {};
     if (Object.keys(exactCounts).length) {
-      lines.push('% 指定したスタッフの月内の出勤回数（勤務コマ数）を固定する。');
-      for (const [name, count] of Object.entries(exactCounts)) {
+      lines.push('% 指定したスタッフの月内の出勤回数（勤務コマ数）を範囲内にする。');
+      for (const [name, savedLimits] of Object.entries(exactCounts)) {
         if (!allNames.includes(name)) {
           errors.push(`「${name}が出勤する回数」のスタッフが現在の勤務表にいません。設定を見直してください。`);
           continue;
         }
         const staffId = staffIds.get(name);
         const possible = slots.filter((slot) => slot.names.includes(name)).length;
-        if (!Number.isInteger(count) || count < 0 || count > possible) {
-          errors.push(`「${name}が出勤する回数」は0〜${possible}回で設定してください。`);
+        const limits = Number.isInteger(savedLimits) ? { min: savedLimits, max: savedLimits } : savedLimits;
+        if (!Number.isInteger(limits?.min) || !Number.isInteger(limits?.max) || limits.min < 0 || limits.max < limits.min || limits.max > possible) {
+          errors.push(`「${name}が出勤する回数」の下限と上限は0〜${possible}回で設定してください。`);
           continue;
         }
         // A staff member with no available slots is omitted from staff/2 and
-        // already satisfies an exact count of zero.
-        if (staffId !== undefined) lines.push(`exact_work_count(${staffId},${count}).`);
+        // already satisfies a zero-to-zero range.
+        if (staffId !== undefined) lines.push(`work_count_range(${staffId},${limits.min},${limits.max}).`);
       }
-      lines.push(':- exact_work_count(S,N), N != #count { T : work(S,T) }.', '');
+      lines.push(':- work_count_range(S,Min,_), #count { T : work(S,T) } < Min.',
+        ':- work_count_range(S,_,Max), #count { T : work(S,T) } > Max.', '');
     }
     if (groups.continuousDailyShift?.enabled) {
       lines.push('% 同じスタッフの一日の勤務コマを連続させる。',
