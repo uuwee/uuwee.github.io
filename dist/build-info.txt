@@ -1,0 +1,8 @@
+build_kit_revision=4
+clingcon=v5.2.1
+clingcon_commit=8c476557facf9fc996ec67053a01b6273fd9baba
+clingo=v5.7.1
+clingo_commit=65e056a24ce77caf0d705e7ccd02f04519bcaf48
+emscripten=emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 3.1.64 (a1fe3902bf73a3802eae0357d273d0e37ea79898)
+wrapper=direct-string-api
+cmake_layout=single-superproject-no-install-export

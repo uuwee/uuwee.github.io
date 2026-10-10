@@ -1,0 +1,10 @@
+:root { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color-scheme: light dark; }
+body { margin: 0; }
+main { width: min(900px, calc(100% - 32px)); margin: 40px auto; }
+footer { width: min(900px, calc(100% - 32px)); margin: 0 auto 32px; color: #666; font-size: 14px; }
+footer a { color: inherit; }
+textarea { width: 100%; min-height: 220px; box-sizing: border-box; font: 14px/1.5 ui-monospace, monospace; padding: 12px; }
+.actions { display: flex; gap: 12px; align-items: center; margin: 12px 0 24px; }
+button { padding: 9px 18px; font: inherit; }
+pre { min-height: 90px; overflow: auto; border: 1px solid #8886; border-radius: 8px; padding: 12px; white-space: pre-wrap; }
+code { font-family: ui-monospace, monospace; }

@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>シフト作成</title>
+  <link rel="stylesheet" href="./style.css">
+  <script src="./xlsx.js" defer></script>
+  <script src="./scheduler.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">本文へ移動</a>
+  <header class="site-header"><div class="container"><span class="brand">シフト作成</span><span class="badge">試作版</span></div></header>
+  <main id="main" class="container">
+    <div class="intro">
+      <h1>シフトを組む</h1>
+      <p>シフト希望の表を選んで、カレンダーで勤務予定を確認します。</p>
+    </div>
+    <div class="workspace-grid">
+    <div class="workspace-column">
+    <section class="panel" aria-labelledby="source-heading">
+      <h2 id="source-heading">1. シフト希望の読み取り</h2>
+      <p class="muted">コンピュータから Excel ファイルを選択してください。</p>
+      <div class="sources">
+        <div class="source">
+          <label class="field-label" for="excel-file">コンピュータから選択</label>
+          <p id="file-help" class="help">Excel ファイル（.xlsx）</p>
+          <input id="excel-file" type="file" accept=".xlsx" aria-describedby="file-help file-status">
+          <p id="file-status" class="help" role="status">ファイルは未選択です。</p>
+        </div>
+      </div>
+      <p class="notice">空欄・○は出勤可能、×は出勤不可として読み取ります。勤務希望と条件からシフト候補を自動検索します。</p>
+      <div class="staff-heading">
+        <h3>スタッフ</h3>
+        <button id="show-staff-form" class="secondary" type="button" aria-expanded="false" aria-controls="staff-add-form">スタッフの追加</button>
+      </div>
+      <ul id="staff-list" class="staff-list"></ul>
+      <p class="help">スタッフ名をクリックすると、カレンダーでその人の出勤可能なコマを強調表示します。もう一度クリックすると解除します。</p>
+      <p id="staff-empty" class="help">Excel ファイルを読み込むと、スタッフを表示します。</p>
+      <form id="staff-add-form" class="staff-add-form" hidden>
+        <h3>スタッフを追加</h3>
+        <label class="field-label" for="staff-name">名前</label>
+        <input id="staff-name" type="text" maxlength="80" required autocomplete="off">
+        <fieldset class="unavailable-slots">
+          <legend>出勤不可能なコマ</legend>
+          <p class="help">表示月の勤務枠から選択してください。選択しなかったコマは出勤可能になります。</p>
+          <div id="staff-unavailable" class="unavailable-calendar-scroll" role="region" aria-label="出勤不可コマの選択カレンダー" tabindex="0"></div>
+        </fieldset>
+        <div class="form-actions">
+          <button id="add-staff" type="submit">追加</button>
+          <button id="cancel-staff" class="secondary" type="button">キャンセル</button>
+        </div>
+      </form>
+      <p id="staff-status" class="help" role="status"></p>
+    </section>
+    <section class="panel" aria-labelledby="calendar-heading">
+      <div class="section-heading">
+        <h2 id="calendar-heading">2. シフトカレンダー</h2><span id="calendar-state" class="badge">ファイル未読込</span>
+      </div>
+      <div class="calendar-toolbar">
+        <h3 id="month-title" aria-live="polite"></h3>
+        <div class="month-actions">
+          <button id="previous-month" class="secondary" type="button" aria-label="前の月">前月</button>
+          <button id="current-month" class="secondary" type="button">今月</button>
+          <button id="next-month" class="secondary" type="button" aria-label="次の月">翌月</button>
+        </div>
+      </div>
+      <fieldset class="layer-controls">
+        <legend>表示するレイヤー</legend>
+        <label><input id="layer-availability" type="checkbox" checked> 出勤可能</label>
+        <label><input id="layer-attendance" type="checkbox" checked> 出勤</label>
+        <label><input id="layer-conditions" type="checkbox" checked> 条件</label>
+      </fieldset>
+      <p id="staff-highlight" class="help" role="status" hidden></p>
+      <div class="calendar-scroll" role="region" aria-label="月間カレンダー" tabindex="0">
+        <table class="calendar">
+          <caption id="calendar-caption" class="visually-hidden"></caption>
+          <thead><tr><th scope="col">日</th><th scope="col">月</th><th scope="col">火</th><th scope="col">水</th><th scope="col">木</th><th scope="col">金</th><th scope="col">土</th></tr></thead>
+          <tbody id="calendar-days"></tbody>
+        </table>
+      </div>
+      <p id="calendar-empty" class="help" hidden>この月には出勤可能な人がいる勤務枠がありません。</p>
+      <p id="schedule-status" class="notice" role="status">勤務希望を読み込むと、シフト候補を検索します。</p>
+      <p id="calendar-note" class="help calendar-note">Excel ファイルを選ぶと、各日の時間帯ごとに出勤可能な全員を表示します。出勤可能なスタッフ名から出勤固定、出勤中のスタッフ名から出勤禁止・交代の条件を追加できます。</p>
+    </section>
+    </div>
+    <div class="workspace-column">
+    <section class="panel" aria-labelledby="conditions-heading">
+      <div class="section-heading">
+        <h2 id="conditions-heading">3. 条件</h2>
+      </div>
+      <p id="conditions-month" class="section-description"></p>
+      <p class="help">各勤務枠の最小・最大人数は、カレンダーの「条件」にある二つのノブで設定します。最小人数の初期値は、その枠の出勤可能人数です。以下の条件は、表示月の各勤務枠に適用します。</p>
+      <div id="group-conditions"></div>
+      <p class="help">条件を変更すると候補を自動検索します。レイヤーを非表示にしても、条件は有効です。</p>
+    </section>
+    <section class="panel" aria-labelledby="sort-heading">
+      <h2 id="sort-heading">4. ソート</h2>
+      <p id="sort-month" class="section-description"></p>
+      <p class="help">「並べ替え」をドラッグして順番を変更します。上にある有効な項目ほど優先します。「上へ」「下へ」ボタンでも変更できます。</p>
+      <p class="help">条件を満たす候補の優先順位を、出勤回数・出勤間隔・出勤回数の偏り・出勤可能回数で設定します。表示月の全スタッフに適用し、目標に近い候補を優先します。目標を満たせなくても候補は除外しません。</p>
+      <div id="sort-settings"></div>
+      <p class="help">ソートを変更すると候補を自動検索し、優先される候補を「出勤」レイヤーに表示します。</p>
+    </section>
+    <section class="panel" aria-labelledby="exploration-heading">
+      <h2 id="exploration-heading">5. 探索</h2>
+      <p class="help">スライダーで選んだ解をカレンダーとスタッツに表示し、残したい解を「良い候補」に追加します。良い候補の「表示」を選ぶと、その候補を表示します。</p>
+      <div class="exploration-actions">
+        <label for="solution-slider">解を選択</label>
+        <span id="solution-position" role="status">解は未取得です。</span>
+        <button id="mark-solution" type="button">良い候補に追加</button>
+      </div>
+      <div class="solution-navigation">
+        <input id="solution-slider" type="range" min="0" max="1" step="1" value="0" disabled aria-describedby="solution-marks-help">
+        <div id="solution-marks" class="solution-marks"></div>
+      </div>
+      <p id="solution-marks-help" class="help"><span class="solution-mark-symbol">◆</span> は良い候補に追加した解の位置です。</p>
+      <p id="exploration-status" class="help" role="status"></p>
+      <h3 class="good-candidates-heading">良い候補</h3>
+      <div class="candidate-comparison-scroll" role="region" aria-label="良い候補のソート項目別比較" tabindex="0">
+        <table id="good-candidates" class="candidate-comparison"></table>
+      </div>
+      <p id="good-candidates-empty" class="help">良い候補はまだありません。</p>
+      <p id="sort-comparison-note" class="help">今の候補と良い候補について、設定したソートの目標と実際の値を比較します。出勤回数は勤務コマ数、出勤間隔は同じスタッフの連続する出勤日の差です。</p>
+      <p class="help">バックグラウンドでは上限なく探索し、画面には評価の高い候補を最大1,000件保持してソート順に並べます。良い候補と表示する候補は月ごとに保存します。勤務希望や条件を変更した場合は、その設定に対応する候補を追加し直してください。ソートの変更では保持します。</p>
+    </section>
+    <section class="panel" aria-labelledby="stats-heading">
+      <h2 id="stats-heading">6. スタッツ</h2>
+      <p id="stats-month" class="section-description"></p>
+      <div class="stats-scroll" role="region" aria-label="スタッフ別のスタッツ" tabindex="0">
+        <table class="stats-table">
+          <caption class="visually-hidden">表示月のスタッフ別集計</caption>
+          <thead><tr><th scope="col">スタッフ</th><th scope="col">出勤可能日数</th><th scope="col">出勤日数</th><th scope="col">出勤回数</th><th scope="col">労働時間</th></tr></thead>
+          <tbody id="stats-body"></tbody>
+        </table>
+      </div>
+      <p class="help">出勤可能日数・出勤日数は、時間帯が複数あっても同じ日は1日と数えます。出勤回数は勤務コマ数です。労働時間は勤務枠の終了時刻が未設定のため、まだ集計しません。</p>
+    </section>
+    <section class="panel" aria-labelledby="clingcon-heading">
+      <div class="section-heading">
+        <h2 id="clingcon-heading">7. Clingcon の入出力</h2><span id="clingcon-status" class="badge" role="status">未実行</span>
+      </div>
+      <p class="section-description">表示月の勤務希望・条件・ソートから作成した入力と、直近の検索結果を表示します。</p>
+      <div class="debug-field">
+        <label class="field-label" for="clingcon-input">入力プログラム</label>
+        <textarea id="clingcon-input" class="debug-code" rows="10" readonly spellcheck="false" placeholder="Excel ファイルを読み込むと、スタッフ・勤務枠・出勤可能者の入力データを表示します。"></textarea>
+      </div>
+      <dl class="debug-metadata">
+        <div><dt>実行オプション</dt><dd id="clingcon-options">未設定</dd></div>
+        <div><dt>終了コード</dt><dd id="clingcon-exit-code">未実行</dd></div>
+      </dl>
+      <div class="debug-field">
+        <label class="field-label" for="clingcon-stdout">標準出力（stdout）</label>
+        <textarea id="clingcon-stdout" class="debug-code" rows="8" readonly spellcheck="false" placeholder="解や探索結果がここに表示されます。"></textarea>
+      </div>
+      <div class="debug-field">
+        <label class="field-label" for="clingcon-stderr">標準エラー（stderr）</label>
+        <textarea id="clingcon-stderr" class="debug-code" rows="4" readonly spellcheck="false" placeholder="エラーや警告がここに表示されます。"></textarea>
+      </div>
+      <p class="help">ファイル読み込み・月の切り替え・条件やソートの変更時に検索します。ソートが有効な場合は候補を改善し、見つかった中で最も目標に近い候補を「出勤」レイヤーに表示します。大量出力による動作低下を防ぐため、標準出力・標準エラーの表示はそれぞれ256 KiBまでです。</p>
+    </section>
+    </div>
+    </div>
+    <p id="storage-status" class="help">勤務希望・追加スタッフ・条件・ソート・良い候補・表示月・レイヤーの選択は、このブラウザに保存します。元の Excel ファイルは保存しません。</p>
+    <details class="state-debug">
+      <summary>デバッグ：状態の保存・読み込み</summary>
+      <p class="help">このブラウザのアプリ状態を JSON ファイルとして保存・復元します。読み込むと現在の状態を置き換え、候補を再探索します。</p>
+      <div class="state-file-actions">
+        <button id="save-state-file" class="secondary" type="button">状態をファイルに保存</button>
+        <label for="load-state-file">状態ファイルを読み込む</label>
+        <input id="load-state-file" type="file" accept=".json,application/json" aria-describedby="state-file-status">
+      </div>
+      <p id="state-file-status" class="help" role="status"></p>
+    </details>
+    <noscript><p class="notice">カレンダーを表示するには JavaScript を有効にしてください。</p></noscript>
+  </main>
+  <footer class="container">シフト作成 / <a href="./smoke.html">WASM 動作確認</a> / <a href="./licenses.html">第三者ライセンス</a></footer>
+</body>
+</html>
