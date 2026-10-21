@@ -119,25 +119,27 @@ window.ShiftScheduler = {
     if (slotRules.length) lines.push('');
 
     const rules = [
-      { key: 'atLeastOne', id: 1, label: '少なくとも一人', exact: false },
-      { key: 'exactlyOne', id: 2, label: '一人だけ', exact: true },
+      { key: 'atLeastOne', id: 1, label: '少なくとも一人は出勤する', comment: '選択したスタッフのうち少なくとも一人が各勤務枠に出勤する。',
+        constraints: [':- slot(T,_,_), #count { S : work(S,T), member(1,S) } < 1.'] },
+      { key: 'exactlyOne', id: 2, label: '一人だけは出勤する', comment: '選択したスタッフのうち一人だけが各勤務枠に出勤する。',
+        constraints: [':- slot(T,_,_), #count { S : work(S,T), member(2,S) } < 1.', ':- slot(T,_,_), #count { S : work(S,T), member(2,S) } > 1.'] },
+      // Staff with no available slot already satisfy this rule.
+      { key: 'alwaysWork', id: 3, label: '必ず出勤する', comment: '選択したスタッフは出勤可能なすべての勤務枠に出勤する。',
+        constraints: [':- member(3,S), available(S,T), not work(S,T).'], vacuous: true },
     ];
     for (const rule of rules) {
       const group = groups[rule.key];
       if (!group?.enabled) continue;
       const selected = [...new Set(group.names ?? [])];
-      if (!selected.length) errors.push(`「${rule.label}は出勤する」の対象スタッフを選択してください。`);
-      if (selected.some((name) => !allNames.includes(name))) errors.push(`「${rule.label}は出勤する」に現在の勤務表にないスタッフが含まれています。選択を見直してください。`);
-      lines.push(`% 選択したスタッフのうち${rule.label}が各勤務枠に出勤する。`);
+      if (!selected.length) errors.push(`「${rule.label}」の対象スタッフを選択してください。`);
+      if (selected.some((name) => !allNames.includes(name))) errors.push(`「${rule.label}」に現在の勤務表にないスタッフが含まれています。選択を見直してください。`);
+      lines.push(`% ${rule.comment}`);
       for (const name of selected) {
         if (staffIds.has(name)) lines.push(`member(${rule.id},${staffIds.get(name)}).`);
       }
       // An empty enabled group is inconsistent; the UI also explains the missing selection.
-      if (!selected.some((name) => staffIds.has(name))) lines.push(':-.');
-      else {
-        lines.push(`:- slot(T,_,_), #count { S : work(S,T), member(${rule.id},S) } < 1.`);
-        if (rule.exact) lines.push(`:- slot(T,_,_), #count { S : work(S,T), member(${rule.id},S) } > 1.`);
-      }
+      if (selected.some((name) => staffIds.has(name))) lines.push(...rule.constraints);
+      else if (!rule.vacuous || !selected.length) lines.push(':-.');
       lines.push('');
     }
     const exactCounts = groups.exactWorkCounts?.counts ?? {};
@@ -281,6 +283,32 @@ window.ShiftScheduler = {
       assignments[`${slot.date} ${slot.time}`].push(name);
     }
     return { assignments, costs: witness.Costs ?? [] };
+  },
+
+  // Each slot lasts two hours; the workbook only records start times.
+  slotMinutes: 120,
+
+  // CSV for Google Calendar import: one event per staff member and slot.
+  toGoogleCalendarCsv(assignments, problem) {
+    const pad = (value) => String(value).padStart(2, '0');
+    const toDate = (date, time) => new Date(`${date}T${time}:00`);
+    const formatDate = (value) => `${pad(value.getMonth() + 1)}/${pad(value.getDate())}/${value.getFullYear()}`;
+    const formatTime = (value) => `${value.getHours() % 12 || 12}:${pad(value.getMinutes())} ${value.getHours() < 12 ? 'AM' : 'PM'}`;
+    const quote = (value) => (/[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
+    const events = [];
+    for (const name of problem.names) {
+      for (const slot of problem.slots) {
+        if (!assignments[`${slot.date} ${slot.time}`]?.includes(name)) continue;
+        const start = toDate(slot.date, slot.time);
+        events.push({ name, start, end: new Date(start.getTime() + this.slotMinutes * 60000) });
+      }
+    }
+    events.sort((a, b) => a.start - b.start || problem.names.indexOf(a.name) - problem.names.indexOf(b.name));
+    const rows = [['Subject', 'Start Date', 'Start Time', 'End Date', 'End Time', 'All Day Event']];
+    for (const event of events) {
+      rows.push([event.name, formatDate(event.start), formatTime(event.start), formatDate(event.end), formatTime(event.end), 'False']);
+    }
+    return { csv: `${rows.map((row) => row.map(quote).join(',')).join('\r\n')}\r\n`, count: events.length };
   },
 
   readResult(stdout, problem) {

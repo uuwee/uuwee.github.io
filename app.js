@@ -6,6 +6,7 @@
   const groupRules = [
     { key: 'atLeastOne', label: '…のうち少なくとも一人は出勤する' },
     { key: 'exactlyOne', label: '…のうち一人が出勤する', help: '選んだスタッフのうち、ちょうど一人が出勤します。' },
+    { key: 'alwaysWork', label: '…は必ず出勤する', help: '選んだスタッフは、出勤可能なすべての勤務枠に出勤します。' },
   ];
   const goalRules = [
     { key: 'workCount', label: '出勤回数', help: '月内の勤務コマ数を、各スタッフについて目標に近づけます。',
@@ -826,6 +827,7 @@
     const marked = candidate && saved?.candidates.some((item) => candidateKey(item.assignments) === candidateKey(candidate.assignments));
     get('mark-solution').disabled = !candidate || marked;
     get('mark-solution').textContent = marked ? '良い候補に追加済み' : '良い候補に追加';
+    get('export-calendar-csv').disabled = !assignments || !problem || problem.errors.length > 0;
     const table = document.createDocumentFragment();
     const caption = document.createElement('caption');
     caption.className = 'visually-hidden';
@@ -1768,18 +1770,38 @@
     return state;
   }
 
+  function downloadFile(name, text, type) {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  get('export-calendar-csv').addEventListener('click', () => {
+    const status = get('calendar-csv-status');
+    if (!assignments || !problem || problem.errors.length) {
+      status.textContent = '書き出せる解がありません。';
+      return;
+    }
+    try {
+      const { csv, count } = ShiftScheduler.toGoogleCalendarCsv(assignments, problem);
+      if (!count) {
+        status.textContent = '表示中の解に出勤予定がありません。';
+        return;
+      }
+      downloadFile(`shift-${monthKey()}.csv`, csv, 'text/csv;charset=utf-8');
+      status.textContent = `${count}件の予定を CSV に書き出しました。`;
+    } catch (error) { status.textContent = `書き出せませんでした：${error.message}`; }
+  });
+
   get('save-state-file').addEventListener('click', () => {
     try {
       const file = { format: 'scheduler-state', version: 1, savedAt: new Date().toISOString(), state: currentState() };
-      const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `scheduler-state-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.append(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadFile(`scheduler-state-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(file, null, 2), 'application/json');
       get('state-file-status').textContent = '状態ファイルを保存するダウンロードを開始しました。';
     } catch (error) { get('state-file-status').textContent = `保存できませんでした：${error.message}`; }
   });

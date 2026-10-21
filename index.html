@@ -30,7 +30,7 @@
           <p id="file-status" class="help" role="status">ファイルは未選択です。</p>
         </div>
       </div>
-      <p class="notice">空欄・○は出勤可能、×は出勤不可として読み取ります。勤務希望と条件からシフト候補を自動検索します。</p>
+      <p class="notice">空欄・○は出勤可能、×は出勤不可として読み取ります。時刻は表に書かれた時刻の15分前として取り込みます。勤務希望と条件からシフト候補を自動検索します。</p>
       <div class="staff-heading">
         <h3>スタッフ</h3>
         <button id="show-staff-form" class="secondary" type="button" aria-expanded="false" aria-controls="staff-add-form">スタッフの追加</button>
@@ -110,6 +110,7 @@
         <label for="solution-slider">解を選択</label>
         <span id="solution-position" role="status">解は未取得です。</span>
         <button id="mark-solution" type="button">良い候補に追加</button>
+        <button id="export-calendar-csv" class="secondary" type="button" disabled aria-describedby="calendar-csv-help">Google カレンダー用 CSV</button>
       </div>
       <div class="solution-navigation">
         <input id="solution-slider" type="range" min="0" max="1" step="1" value="0" disabled aria-describedby="solution-marks-help">
@@ -117,6 +118,8 @@
       </div>
       <p id="solution-marks-help" class="help"><span class="solution-mark-symbol">◆</span> は良い候補に追加した解の位置です。</p>
       <p id="exploration-status" class="help" role="status"></p>
+      <p id="calendar-csv-help" class="help">「Google カレンダー用 CSV」は、表示中の解をスタッフごとの予定として書き出します。1コマは2時間とし、同じ日に続くコマもコマごとに別の予定にします。Google カレンダーの「設定」→「インポート / エクスポート」で取り込みます。同じファイルを再度取り込むと予定が重複するため、シフト専用のカレンダーへの取り込みをおすすめします。</p>
+      <p id="calendar-csv-status" class="help" role="status"></p>
       <h3 class="good-candidates-heading">良い候補</h3>
       <div class="candidate-comparison-scroll" role="region" aria-label="良い候補のソート項目別比較" tabindex="0">
         <table id="good-candidates" class="candidate-comparison"></table>

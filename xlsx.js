@@ -94,7 +94,9 @@ window.readShiftWorkbook = async (buffer) => {
       if (!dateKey || !row.B || !/^\d+(\.\d+)?$/.test(row.B)) continue;
       const timeValue = Number(row.B);
       if (timeValue < 0 || timeValue >= 1) throw new Error('時間セルを読み取れません。');
-      const minutes = Math.round(timeValue * 1440);
+      // Shifts start 15 minutes before the times written in the survey.
+      const minutes = Math.round(timeValue * 1440) - 15;
+      if (minutes < 0) throw new Error(`${sheet.getAttribute('name')} の ${dateKey} の時間は 0:15 以降にしてください。`);
       const time = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
       const available = [];
       for (const [column, name] of staff) {
